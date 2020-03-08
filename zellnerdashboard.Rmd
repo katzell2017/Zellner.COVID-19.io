@@ -1,0 +1,171 @@
+---
+title: "Coronavirus"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    runtime: shiny 
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(leaflet)
+library(tidyverse)
+library(shiny)
+library(plotly)
+
+covid_confirmed<- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv")
+covid_deaths<- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv")
+covid_recover<- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv")
+
+
+#filter to US
+US_confirmed <- filter(covid_confirmed, Country.Region=="US")
+US_deaths <- filter(covid_deaths, Country.Region=="US")
+US_recovered <- filter(covid_recover, Country.Region=="US")
+
+
+
+#extract last updated date
+update<-colnames(covid_confirmed[ncol(covid_confirmed)])
+date<-sub('X', '', update)
+
+
+
+#making sum of cases over time for graphs 
+
+tseries_confirmed<-  select(US_confirmed, starts_with("X"))
+tseries_confirmed_sum<- colSums(tseries_confirmed, na.rm = FALSE, dims = 1)
+tseries_dates<- colnames(tseries_confirmed)
+tseries_dates<- sub('X', '', tseries_dates)
+
+tseries_deaths<-  select(US_deaths, starts_with("X"))
+tseries_deaths_sum<- colSums(tseries_deaths, na.rm = FALSE, dims = 1)
+tseries_dates_death<- colnames(tseries_deaths)
+tseries_dates_death<- sub('X', '', tseries_dates_death)
+
+tseries_recover<-  select(US_recovered, starts_with("X"))
+tseries_recover_sum<- colSums(tseries_recover, na.rm = FALSE, dims = 1)
+tseries_dates_recover<- colnames(tseries_recover)
+tseries_dates_recover<- sub('X', '', tseries_dates_recover)
+
+
+
+#delete old time series for map to make my life easier
+
+last_col<-ncol(US_confirmed)-1
+US_confirmed_now<-  US_confirmed[ -c(5:last_col) ]
+colnames(US_confirmed_now)[5] <- "cases"
+
+US_confirmed_now<- filter(US_confirmed_now, cases !=0)
+
+US_deaths_now<-  US_deaths[ -c(5:last_col) ]
+colnames(US_deaths_now)[5] <- "deaths"
+
+US_deaths_now <-filter(US_deaths_now, deaths !=0)
+
+US_recover_now<-  US_recovered[ -c(5:last_col) ]
+colnames(US_recover_now)[5] <- "recovered_cases"
+
+US_recover_now<-filter(US_recover_now, recovered_cases !=0)
+
+
+
+
+```
+
+---
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+#Choose Type of Cases to See on Map
+
+```{r}
+selectInput("type", label = h3("Type of Cases"), 
+    choices = list("Confirmed Cases" = 1, "Recovered Cases" = 2, "Deaths" = 3),
+    selected = 1)
+
+print(paste0("Last Updated:", " ", date))
+
+```
+
+
+    
+Column {data-width=600}
+-------------------------------------
+    
+### Map of COVID-19 Cases
+    
+```{r}
+
+ renderLeaflet({
+
+flex_map <- leaflet() %>% 
+  addTiles()
+
+if (input$type == 1){
+
+flex_map <- flex_map %>%
+  addMarkers(lat=US_confirmed_now$Lat, lng= US_confirmed_now$Long, popup= paste0(as.character(US_confirmed_now$cases)," ", "case(s)"), clusterOptions = markerClusterOptions())}
+
+else if(input$type == 2){
+
+flex_map <- flex_map %>%
+  addMarkers(lat=US_recover_now$Lat, lng= US_recover_now$Long,popup= paste0(as.character(US_recover_now$recovered_cases)," ", "recovered case(s)"), clusterOptions = markerClusterOptions())}
+
+
+else if(input$type == 3){
+
+flex_map <- flex_map %>%
+  addMarkers(lat=US_deaths_now$Lat, lng= US_deaths_now$Long,popup = paste0(as.character(US_deaths_now$deaths)," ","death(s)"), clusterOptions = markerClusterOptions())}
+
+}
+
+)
+
+
+```
+   
+Column {data-width=400}
+-------------------------------------
+   
+### US Confirmed Cases Over Time
+
+```{r}
+
+    plot_ly(type = "scatter", 
+          x = tseries_dates, 
+          y = tseries_confirmed_sum)
+
+```   
+ 
+### US Deaths Over Time
+    
+```{r}
+
+
+  plot_ly(type = "scatter", color = "red",
+          x = tseries_dates_death, 
+          y = tseries_deaths_sum)
+
+
+```
+
+
+### Current Death Rate in US
+
+
+```{r}
+
+percent_deaths<- round(sum(tseries_deaths_sum)/sum(tseries_confirmed_sum) *100, digits=2)
+
+gauge(percent_deaths, min = 0, max = 10, gaugeSectors(
+  success = c(0, 2), warning = c(3, 6), danger = c(7, 10)
+))
+
+
+
+```
+
+
+
